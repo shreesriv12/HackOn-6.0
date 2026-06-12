@@ -28,3 +28,25 @@ export async function uploadProfilePhoto(file) {
 
   return result.secure_url;
 }
+
+export async function uploadProductImages(files = []) {
+  if (!files.length) {
+    return [];
+  }
+
+  if (!hasCloudinaryConfig()) {
+    return files.map((file) => `local-preview://${file.originalname}`);
+  }
+
+  const uploads = files.map(async (file) => {
+    const dataUri = `data:${file.mimetype};base64,${file.buffer.toString("base64")}`;
+    const result = await cloudinary.uploader.upload(dataUri, {
+      folder: "products-without-second-chance/products",
+      resource_type: "image",
+    });
+
+    return result.secure_url;
+  });
+
+  return Promise.all(uploads);
+}

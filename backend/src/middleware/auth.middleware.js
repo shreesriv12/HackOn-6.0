@@ -19,8 +19,14 @@ export async function requireAuth(req, res, next) {
     }
 
     req.user = user;
+    req.authMode = payload.mode || getDefaultMode(user.role);
     next();
   } catch {
     res.status(401).json({ message: "Invalid or expired token" });
   }
+}
+
+function getDefaultMode(role) {
+  if (role === "admin") return "admin";
+  return "buyer";
 }

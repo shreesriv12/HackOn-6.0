@@ -7,12 +7,13 @@ import { uploadProfilePhoto } from "../services/cloudinary.service.js";
 import { User } from "../models/User.js";
 import { env } from "../config/env.js";
 
-const allowedRoles = ["user", "admin"];
-const dashboardModes = ["buyer", "seller"];
+const allowedRoles = ["user", "buyer", "seller", "admin"];
+const userLoginModes = ["buyer", "seller"];
 
 export async function register(req, res) {
   try {
     const { name, email, password, phone, role = "user", adminCode = "" } = req.body;
+    const accountRole = role === "buyer" || role === "seller" ? "user" : role;
 
     if (!name || !email || !password || !phone) {
       return res.status(400).json({ message: "Name, email, password, and phone are required" });
@@ -22,7 +23,7 @@ export async function register(req, res) {
       return res.status(400).json({ message: "Invalid account type selected" });
     }
 
-    if (role === "admin" && env.adminRegistrationCode && adminCode !== env.adminRegistrationCode) {
+    if (accountRole === "admin" && env.adminRegistrationCode && adminCode !== env.adminRegistrationCode) {
       return res.status(403).json({ message: "Invalid admin registration code" });
     }
 
@@ -38,7 +39,7 @@ export async function register(req, res) {
       email,
       phone,
       passwordHash,
-      role,
+      role: accountRole,
       otpCode: code,
       otpExpiresAt: expiresAt,
     });
@@ -48,7 +49,7 @@ export async function register(req, res) {
     res.status(201).json({
       message: "Check your email for the verification code.",
       email: user.email,
-      role,
+      role: accountRole,
       nextStep: "verify-email-otp",
       demoOtp: process.env.NODE_ENV === "production" ? undefined : code,
     });
@@ -71,8 +72,8 @@ export async function verifyOtp(req, res) {
     user.otpExpiresAt = undefined;
     await user.save();
 
-    const token = createToken(user);
-    const defaultMode = user.role === "admin" ? "admin" : "buyer";
+    const defaultMode = getAccountMode(user.role);
+    const token = createToken(user, defaultMode);
     res.json({
       message: "Email verified",
       token,
@@ -128,13 +129,9 @@ export async function login(req, res) {
       return res.status(403).json({ message: "Please verify your email before login" });
     }
 
-    if (dashboardMode === "admin" && user.role !== "admin") {
-      return res.status(403).json({ message: "This account does not have admin access" });
-    }
+    const selectedMode = getSelectedMode(user.role, dashboardMode);
 
-    const selectedMode = user.role === "admin" ? "admin" : normalizeDashboardMode(dashboardMode);
-
-    const token = createToken(user);
+    const token = createToken(user, selectedMode);
     res.json({
       token,
       user: toUserDto(user),
@@ -206,6 +203,15 @@ function roleTitle(role, mode = "buyer") {
   return mode === "seller" ? "Seller Dashboard" : "Buyer Dashboard";
 }
 
-function normalizeDashboardMode(mode) {
-  return dashboardModes.includes(mode) ? mode : "buyer";
+function getAccountMode(role) {
+  if (role === "admin") return "admin";
+  return "buyer";
+}
+
+function getSelectedMode(role, requestedMode) {
+  if (role === "admin") {
+    return "admin";
+  }
+
+  return userLoginModes.includes(requestedMode) ? requestedMode : "buyer";
 }

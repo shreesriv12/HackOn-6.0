@@ -11,7 +11,7 @@ export async function getDashboard(req, res) {
     return res.json({
       mode,
       dashboardTitle: "Admin Panel",
-      user: toDashboardUser(user),
+      user: toDashboardUser(user, mode),
       summary: {
         users: totalUsers,
         admins: totalAdmins,
@@ -32,7 +32,7 @@ export async function getDashboard(req, res) {
     return res.json({
       mode,
       dashboardTitle: "Seller Dashboard",
-      user: toDashboardUser(user),
+      user: toDashboardUser(user, mode),
       summary: {
         activeListings: 0,
         orders: 0,
@@ -53,7 +53,7 @@ export async function getDashboard(req, res) {
   res.json({
     mode,
     dashboardTitle: "Buyer Dashboard",
-    user: toDashboardUser(user),
+    user: toDashboardUser(user, mode),
     summary: {
       orders: 0,
       activeMatches: 0,
@@ -73,14 +73,15 @@ export async function getDashboard(req, res) {
 
 function getMode(req, user) {
   if (user.role === "admin") return "admin";
-  return req.query.mode === "seller" ? "seller" : "buyer";
+  return req.authMode === "seller" ? "seller" : "buyer";
 }
 
-function toDashboardUser(user) {
+function toDashboardUser(user, mode) {
   return {
     name: user.name,
     email: user.email,
     role: user.role === "admin" ? "admin" : "user",
+    mode,
     location: user.profile?.location?.label || "",
   };
 }
