@@ -7,7 +7,8 @@ import { uploadProfilePhoto } from "../services/cloudinary.service.js";
 import { User } from "../models/User.js";
 import { env } from "../config/env.js";
 
-const allowedRoles = ["user", "seller", "admin"];
+const allowedRoles = ["user", "admin"];
+const dashboardModes = ["buyer", "seller"];
 
 export async function register(req, res) {
   try {
@@ -18,7 +19,7 @@ export async function register(req, res) {
     }
 
     if (!allowedRoles.includes(role)) {
-      return res.status(400).json({ message: "Invalid role selected" });
+      return res.status(400).json({ message: "Invalid account type selected" });
     }
 
     if (role === "admin" && env.adminRegistrationCode && adminCode !== env.adminRegistrationCode) {
@@ -45,7 +46,7 @@ export async function register(req, res) {
     await sendOtpEmail(user.email, code);
 
     res.status(201).json({
-      message: `${roleLabel(role)} registration started. Verify the OTP sent to your email.`,
+      message: "Check your email for the verification code.",
       email: user.email,
       role,
       nextStep: "verify-email-otp",
@@ -71,12 +72,14 @@ export async function verifyOtp(req, res) {
     await user.save();
 
     const token = createToken(user);
+    const defaultMode = user.role === "admin" ? "admin" : "buyer";
     res.json({
       message: "Email verified",
       token,
       user: toUserDto(user),
-      redirectTo: roleHome(user.role),
-      dashboardTitle: roleTitle(user.role),
+      dashboardMode: defaultMode,
+      redirectTo: roleHome(user.role, defaultMode),
+      dashboardTitle: roleTitle(user.role, defaultMode),
     });
   } catch (error) {
     res.status(500).json({ message: "OTP verification failed", error: error.message });
@@ -109,7 +112,7 @@ export async function resendOtp(req, res) {
 
 export async function login(req, res) {
   try {
-    const { email, password } = req.body;
+    const { email, password, dashboardMode = "buyer" } = req.body;
     const user = await User.findOne({ email });
 
     if (!user) {
@@ -125,12 +128,19 @@ export async function login(req, res) {
       return res.status(403).json({ message: "Please verify your email before login" });
     }
 
+    if (dashboardMode === "admin" && user.role !== "admin") {
+      return res.status(403).json({ message: "This account does not have admin access" });
+    }
+
+    const selectedMode = user.role === "admin" ? "admin" : normalizeDashboardMode(dashboardMode);
+
     const token = createToken(user);
     res.json({
       token,
       user: toUserDto(user),
-      redirectTo: roleHome(user.role),
-      dashboardTitle: roleTitle(user.role),
+      dashboardMode: selectedMode,
+      redirectTo: roleHome(user.role, selectedMode),
+      dashboardTitle: roleTitle(user.role, selectedMode),
     });
   } catch (error) {
     res.status(500).json({ message: "Login failed", error: error.message });
@@ -186,20 +196,16 @@ function parseList(value) {
     .filter(Boolean);
 }
 
-function roleHome(role) {
+function roleHome(role, mode = "buyer") {
   if (role === "admin") return "/admin";
-  if (role === "seller") return "/seller";
-  return "/dashboard";
+  return mode === "seller" ? "/seller" : "/buyer";
 }
 
-function roleTitle(role) {
+function roleTitle(role, mode = "buyer") {
   if (role === "admin") return "Admin Panel";
-  if (role === "seller") return "Seller Dashboard";
-  return "User Dashboard";
+  return mode === "seller" ? "Seller Dashboard" : "Buyer Dashboard";
 }
 
-function roleLabel(role) {
-  if (role === "admin") return "Admin";
-  if (role === "seller") return "Seller";
-  return "User";
+function normalizeDashboardMode(mode) {
+  return dashboardModes.includes(mode) ? mode : "buyer";
 }

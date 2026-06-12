@@ -22,21 +22,22 @@ const initialProfileForm = {
 function App() {
   const [view, setView] = useState("home");
   const [registerForm, setRegisterForm] = useState(initialRegisterForm);
-  const [loginForm, setLoginForm] = useState({ email: "", password: "" });
+  const [loginForm, setLoginForm] = useState({ email: "", password: "", dashboardMode: "buyer" });
   const [profileForm, setProfileForm] = useState(initialProfileForm);
   const [otp, setOtp] = useState("");
   const [token, setToken] = useState(localStorage.getItem("pwsc_token") || "");
   const [user, setUser] = useState(null);
   const [dashboard, setDashboard] = useState(null);
+  const [dashboardMode, setDashboardMode] = useState(localStorage.getItem("pwsc_mode") || "buyer");
   const [notice, setNotice] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const roleLabel = useMemo(() => {
-    if (!user) return "Hello, sign in";
-    if (user.role === "admin") return "Admin Panel";
-    if (user.role === "seller") return "Seller Dashboard";
-    return "User Dashboard";
-  }, [user]);
+  const navTitle = useMemo(() => {
+    if (!token) return "Hello, sign in";
+    if (dashboardMode === "admin") return "Admin";
+    if (dashboardMode === "seller") return "Seller";
+    return "Buyer";
+  }, [dashboardMode, token]);
 
   async function api(path, options = {}) {
     const response = await fetch(`/api${path}`, {
@@ -61,7 +62,7 @@ function App() {
         method: "POST",
         body: JSON.stringify(registerForm),
       });
-      setNotice(data.demoOtp ? `${data.message} Demo OTP: ${data.demoOtp}` : data.message);
+      setNotice(data.demoOtp ? `Verification code: ${data.demoOtp}` : data.message);
       setView("otp");
     } catch (error) {
       setNotice(error.message);
@@ -79,10 +80,8 @@ function App() {
         method: "POST",
         body: JSON.stringify({ email: registerForm.email, otp }),
       });
-      localStorage.setItem("pwsc_token", data.token);
-      setToken(data.token);
-      setUser(data.user);
-      setNotice(`Email verified. Opening ${data.dashboardTitle} after profile setup.`);
+      saveSession(data.token, data.dashboardMode, data.user);
+      setNotice("Email verified.");
       setView("profile");
     } catch (error) {
       setNotice(error.message);
@@ -100,11 +99,8 @@ function App() {
         method: "POST",
         body: JSON.stringify(loginForm),
       });
-      localStorage.setItem("pwsc_token", data.token);
-      setToken(data.token);
-      setUser(data.user);
-      setNotice(`JWT issued. Opening ${data.dashboardTitle}.`);
-      await loadDashboard(data.token);
+      saveSession(data.token, data.dashboardMode, data.user);
+      await loadDashboard(data.dashboardMode, data.token);
       setView("dashboard");
     } catch (error) {
       setNotice(error.message);
@@ -127,8 +123,7 @@ function App() {
         body: formData,
       });
       setUser(data.user);
-      setNotice(data.onboardingTour.join(" | "));
-      await loadDashboard();
+      await loadDashboard(dashboardMode);
       setView("dashboard");
     } catch (error) {
       setNotice(error.message);
@@ -137,46 +132,70 @@ function App() {
     }
   }
 
-  async function loadDashboard(nextToken = token) {
-    const response = await fetch("/api/dashboard", {
+  async function loadDashboard(mode = dashboardMode, nextToken = token) {
+    const response = await fetch(`/api/dashboard?mode=${mode}`, {
       headers: { Authorization: `Bearer ${nextToken}` },
     });
     const data = await response.json();
     if (!response.ok) throw new Error(data.message || "Could not load dashboard");
     setDashboard(data);
+    setDashboardMode(data.mode);
+    localStorage.setItem("pwsc_mode", data.mode);
+  }
+
+  async function switchMode(mode) {
+    setLoading(true);
+    setNotice("");
+    try {
+      await loadDashboard(mode);
+      setView("dashboard");
+    } catch (error) {
+      setNotice(error.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function saveSession(nextToken, mode, nextUser) {
+    localStorage.setItem("pwsc_token", nextToken);
+    localStorage.setItem("pwsc_mode", mode);
+    setToken(nextToken);
+    setDashboardMode(mode);
+    setUser(nextUser);
   }
 
   function logout() {
     localStorage.removeItem("pwsc_token");
+    localStorage.removeItem("pwsc_mode");
     setToken("");
     setUser(null);
     setDashboard(null);
+    setDashboardMode("buyer");
     setView("home");
   }
 
   return (
     <div className="amazon-shell">
       <header className="topbar">
-        <div className="brand" onClick={() => setView("home")}>
+        <button className="brand" onClick={() => setView("home")}>
           amazon<span>.in</span>
-          <small>circular</small>
-        </div>
+        </button>
         <div className="location">Delivering to {dashboard?.user.location || "your area"}</div>
         <div className="search">
           <select aria-label="Category">
             <option>All</option>
+            <option>Buy Again</option>
+            <option>Sell</option>
             <option>Returns</option>
-            <option>Resale</option>
-            <option>Admin</option>
           </select>
           <input placeholder="Search Amazon.in" />
           <button type="button">Search</button>
         </div>
         <button className="nav-action" onClick={() => setView(token ? "dashboard" : "login")}>
-          {roleLabel}
+          {navTitle}
         </button>
         <button className="nav-action" onClick={token ? logout : () => setView("register")}>
-          {token ? "Logout" : "Sign Up"}
+          {token ? "Logout" : "Sign up"}
         </button>
       </header>
 
@@ -184,26 +203,19 @@ function App() {
         <span>All</span>
         <span>Fresh</span>
         <span>Sell</span>
-        <span>Admin</span>
-        <span>Returns</span>
-        <span>Rewards</span>
-        <span>Recycle</span>
+        <span>Bestsellers</span>
+        <span>Today's Deals</span>
+        <span>Mobiles</span>
         <span>Fashion</span>
         <span>Home & Kitchen</span>
+        <span>Returns</span>
       </nav>
 
       <main>
-        <Hero onSignup={() => setView("register")} onLogin={() => setView("login")} />
+        {view === "home" && <Home onSignup={() => setView("register")} onLogin={() => setView("login")} />}
         {notice && <div className="notice">{notice}</div>}
-
-        {view === "home" && <HomeGrid onSignup={() => setView("register")} />}
         {view === "register" && (
-          <RegisterForm
-            form={registerForm}
-            setForm={setRegisterForm}
-            onSubmit={handleRegister}
-            loading={loading}
-          />
+          <RegisterForm form={registerForm} setForm={setRegisterForm} onSubmit={handleRegister} loading={loading} />
         )}
         {view === "otp" && (
           <OtpForm email={registerForm.email} otp={otp} setOtp={setOtp} onSubmit={handleOtp} loading={loading} />
@@ -214,88 +226,73 @@ function App() {
         {view === "profile" && (
           <ProfileForm form={profileForm} setForm={setProfileForm} onSubmit={handleProfile} loading={loading} />
         )}
-        {view === "dashboard" && <Dashboard dashboard={dashboard} user={user} onRefresh={() => loadDashboard()} />}
+        {view === "dashboard" && (
+          <Dashboard
+            dashboard={dashboard}
+            loading={loading}
+            mode={dashboardMode}
+            onRefresh={() => loadDashboard(dashboardMode)}
+            onSwitchMode={switchMode}
+          />
+        )}
       </main>
     </div>
   );
 }
 
-function Hero({ onSignup, onLogin }) {
+function Home({ onSignup, onLogin }) {
   return (
-    <section className="hero">
-      <div>
-        <p>Products Without a Second Chance</p>
-        <h1>Role-based circular commerce for users, sellers, and admins.</h1>
-        <span>OTP onboarding, JWT login, admin controls, seller insights, and user rewards in one Amazon-style experience.</span>
-      </div>
-      <div className="hero-actions">
-        <button onClick={onSignup}>Sign up securely</button>
-        <button className="secondary" onClick={onLogin}>Login</button>
-      </div>
-    </section>
-  );
-}
-
-function HomeGrid({ onSignup }) {
-  return (
-    <section className="deal-grid">
-      <article className="deal-card">
-        <h2>Choose your role</h2>
-        <div className="product-grid">
-          <ProductTile title="User" badge="Rewards and matches" />
-          <ProductTile title="Seller" badge="Return analytics" />
-          <ProductTile title="Admin" badge="Platform control" />
-          <ProductTile title="OTP" badge="Email verified" />
+    <>
+      <section className="hero">
+        <div>
+          <p>Amazon Circular</p>
+          <h1>Shop, sell, and return smarter.</h1>
+          <span>Use one account for buying and selling. Admins manage operations separately.</span>
         </div>
-      </article>
-      <article className="deal-card">
-        <h2>Flow 1: Registration</h2>
-        <p>Sign up as a normal user, seller, or admin. Admin signup can be protected with an admin code.</p>
-        <button onClick={onSignup}>Start onboarding</button>
-      </article>
-      <article className="deal-card">
-        <h2>Flow 2: Login</h2>
-        <p>JWT login returns the role and opens the matching dashboard experience.</p>
-      </article>
-      <article className="deal-card">
-        <h2>Flow 3: Dashboard</h2>
-        <p>Users see demand and rewards, sellers see insights, admins see platform operations.</p>
-      </article>
-    </section>
+        <div className="hero-actions">
+          <button onClick={onLogin}>Sign in</button>
+          <button className="secondary" onClick={onSignup}>Create account</button>
+        </div>
+      </section>
+      <section className="deal-grid">
+        <InfoCard title="Buyer dashboard" text="Orders, matches, returns, rewards, and nearby demand." />
+        <InfoCard title="Seller dashboard" text="Listings, return reasons, recovered revenue, and insights." />
+        <InfoCard title="Admin panel" text="Users, listings, returns, rewards, partners, and reports." />
+        <InfoCard title="One email" text="Use the same email to open buyer or seller dashboards." />
+      </section>
+    </>
   );
 }
 
-function ProductTile({ title, badge }) {
+function InfoCard({ title, text }) {
   return (
-    <div className="product-tile">
-      <div className="mock-image">{title.slice(0, 2)}</div>
-      <strong>{title}</strong>
-      <span>{badge}</span>
-    </div>
+    <article className="deal-card">
+      <h2>{title}</h2>
+      <p>{text}</p>
+    </article>
   );
 }
 
 function RegisterForm({ form, setForm, onSubmit, loading }) {
   return (
-    <FormShell title="Create your account" subtitle="Registration is role-based">
+    <FormShell title="Create account">
       <form onSubmit={onSubmit} className="form-grid">
         <input placeholder="Name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
         <input placeholder="Email" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
         <input placeholder="Password" type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
         <input placeholder="Phone" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
         <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
-          <option value="user">Normal User</option>
-          <option value="seller">Seller</option>
-          <option value="admin">Admin</option>
+          <option value="user">Customer account</option>
+          <option value="admin">Admin account</option>
         </select>
         {form.role === "admin" && (
           <input
-            placeholder="Admin registration code"
+            placeholder="Admin code"
             value={form.adminCode}
             onChange={(e) => setForm({ ...form, adminCode: e.target.value })}
           />
         )}
-        <button disabled={loading}>{loading ? "Sending OTP..." : `Continue as ${roleName(form.role)}`}</button>
+        <button disabled={loading}>{loading ? "Please wait..." : "Continue"}</button>
       </form>
     </FormShell>
   );
@@ -303,10 +300,11 @@ function RegisterForm({ form, setForm, onSubmit, loading }) {
 
 function OtpForm({ email, otp, setOtp, onSubmit, loading }) {
   return (
-    <FormShell title="Verify email OTP" subtitle={`Code sent to ${email}`}>
+    <FormShell title="Verify email">
       <form onSubmit={onSubmit} className="form-grid">
-        <input placeholder="6-digit OTP" value={otp} onChange={(e) => setOtp(e.target.value)} />
-        <button disabled={loading}>{loading ? "Verifying..." : "Verify OTP"}</button>
+        <input value={email} readOnly />
+        <input placeholder="Enter code" value={otp} onChange={(e) => setOtp(e.target.value)} />
+        <button disabled={loading}>{loading ? "Verifying..." : "Verify"}</button>
       </form>
     </FormShell>
   );
@@ -314,11 +312,16 @@ function OtpForm({ email, otp, setOtp, onSubmit, loading }) {
 
 function LoginForm({ form, setForm, onSubmit, loading }) {
   return (
-    <FormShell title="Sign in" subtitle="Login routes users, sellers, and admins by JWT role">
+    <FormShell title="Sign in">
       <form onSubmit={onSubmit} className="form-grid">
         <input placeholder="Email" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
         <input placeholder="Password" type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
-        <button disabled={loading}>{loading ? "Signing in..." : "Sign in securely"}</button>
+        <select value={form.dashboardMode} onChange={(e) => setForm({ ...form, dashboardMode: e.target.value })}>
+          <option value="buyer">Buyer dashboard</option>
+          <option value="seller">Seller dashboard</option>
+          <option value="admin">Admin panel</option>
+        </select>
+        <button disabled={loading}>{loading ? "Signing in..." : "Sign in"}</button>
       </form>
     </FormShell>
   );
@@ -326,37 +329,35 @@ function LoginForm({ form, setForm, onSubmit, loading }) {
 
 function ProfileForm({ form, setForm, onSubmit, loading }) {
   return (
-    <FormShell title="Profile setup" subtitle="Upload photo, add location, size, and sustainability interests">
+    <FormShell title="Profile setup">
       <form onSubmit={onSubmit} className="form-grid">
         <input type="file" accept="image/*" onChange={(e) => setForm({ ...form, profilePhoto: e.target.files[0] })} />
         <input placeholder="Location" value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} />
         <input placeholder="Clothing size" value={form.clothingSize} onChange={(e) => setForm({ ...form, clothingSize: e.target.value })} />
         <input placeholder="Shoe size" value={form.shoeSize} onChange={(e) => setForm({ ...form, shoeSize: e.target.value })} />
         <input placeholder="Preferences" value={form.preferences} onChange={(e) => setForm({ ...form, preferences: e.target.value })} />
-        <input placeholder="Sustainability interests, comma separated" value={form.sustainabilityInterests} onChange={(e) => setForm({ ...form, sustainabilityInterests: e.target.value })} />
-        <button disabled={loading}>{loading ? "Saving..." : "Open role dashboard"}</button>
+        <input placeholder="Sustainability interests" value={form.sustainabilityInterests} onChange={(e) => setForm({ ...form, sustainabilityInterests: e.target.value })} />
+        <button disabled={loading}>{loading ? "Saving..." : "Save profile"}</button>
       </form>
     </FormShell>
   );
 }
 
-function FormShell({ title, subtitle, children }) {
+function FormShell({ title, children }) {
   return (
     <section className="form-shell">
       <h2>{title}</h2>
-      <p>{subtitle}</p>
       {children}
     </section>
   );
 }
 
-function Dashboard({ dashboard, user, onRefresh }) {
+function Dashboard({ dashboard, loading, mode, onRefresh, onSwitchMode }) {
   if (!dashboard) {
     return (
       <section className="form-shell">
         <h2>Dashboard</h2>
-        <p>Login or complete onboarding to load role-based dashboard data.</p>
-        <button onClick={onRefresh}>Load dashboard</button>
+        <button onClick={onRefresh} disabled={loading}>Load dashboard</button>
       </section>
     );
   }
@@ -365,10 +366,16 @@ function Dashboard({ dashboard, user, onRefresh }) {
     <section className="dashboard">
       <div className="dashboard-head">
         <div>
-          <p>{roleName(user?.role || dashboard.user.role)}</p>
-          <h2>{dashboard.dashboardTitle}: {dashboard.user.name}</h2>
+          <p>{dashboard.dashboardTitle}</p>
+          <h2>{dashboard.user.name}</h2>
         </div>
-        <button onClick={onRefresh}>Refresh</button>
+        {dashboard.user.role !== "admin" && (
+          <div className="mode-switch">
+            <button className={mode === "buyer" ? "active" : ""} onClick={() => onSwitchMode("buyer")}>Buyer</button>
+            <button className={mode === "seller" ? "active" : ""} onClick={() => onSwitchMode("seller")}>Seller</button>
+          </div>
+        )}
+        <button onClick={onRefresh} disabled={loading}>Refresh</button>
       </div>
 
       <div className="metric-grid">
@@ -377,73 +384,48 @@ function Dashboard({ dashboard, user, onRefresh }) {
         ))}
       </div>
 
-      <RoleDashboardSections dashboard={dashboard} />
+      <DashboardSections dashboard={dashboard} />
     </section>
   );
 }
 
-function RoleDashboardSections({ dashboard }) {
-  if (dashboard.user.role === "admin") {
+function DashboardSections({ dashboard }) {
+  if (dashboard.mode === "admin") {
     return (
       <div className="dashboard-grid">
-        <ListPanel title="Admin modules" items={dashboard.adminModules} renderItem={(item) => (
-          <>
-            <span>{item.name}</span>
-            <small>{item.status}</small>
-          </>
-        )} />
-        <ListPanel title="Platform alerts" items={dashboard.alerts} />
-        <ListPanel title="Admin permissions" items={[
-          "Manage users, listings, returns, recycle centers, rewards, and NGO partners",
-          "Override AI grading decisions",
-          "Export analytics and sustainability reports",
-        ]} />
+        <ListPanel title="Modules" items={dashboard.sections.modules} empty="No admin modules yet." />
+        <ListPanel title="Alerts" items={dashboard.sections.alerts} empty="No alerts." />
+        <ListPanel title="Reports" items={dashboard.sections.reports} empty="No reports yet." />
       </div>
     );
   }
 
-  if (dashboard.user.role === "seller") {
+  if (dashboard.mode === "seller") {
     return (
       <div className="dashboard-grid">
-        <ListPanel title="AI seller insights" items={dashboard.sellerInsights} />
-        <ListPanel title="Return reason analysis" items={dashboard.returnReasons} renderItem={(item) => (
-          <>
-            <span>{item.reason}</span>
-            <strong>{item.count} returns</strong>
-          </>
-        )} />
-        <ListPanel title="Seller nudges" items={dashboard.proactiveNudges} />
+        <ListPanel title="Listings" items={dashboard.sections.listings} empty="No listings yet." />
+        <ListPanel title="Return reasons" items={dashboard.sections.returnReasons} empty="No returns yet." />
+        <ListPanel title="Insights" items={dashboard.sections.insights} empty="No insights yet." />
+        <ListPanel title="Nudges" items={dashboard.sections.nudges} empty="No nudges yet." />
       </div>
     );
   }
 
   return (
     <div className="dashboard-grid">
-      <article className="panel">
-        <h3>Nearby demand map</h3>
-        {dashboard.nearbyDemand.map((item) => (
-          <div className="demand-row" key={item.product}>
-            <span>{item.product}</span>
-            <strong>{item.peopleWaiting} waiting</strong>
-            <small>{item.distance} | {item.matchScore}% match</small>
-          </div>
-        ))}
-      </article>
-      <ListPanel title="Proactive nudges" items={dashboard.proactiveNudges} />
-      <ListPanel title="Onboarding tour" items={dashboard.onboardingTour} />
+      <ListPanel title="Nearby demand" items={dashboard.sections.nearbyDemand} empty="No nearby demand yet." />
+      <ListPanel title="Nudges" items={dashboard.sections.nudges} empty="No nudges yet." />
+      <ListPanel title="Rewards" items={dashboard.sections.rewards} empty="No rewards yet." />
+      <ListPanel title="Recent orders" items={dashboard.sections.recentOrders} empty="No orders yet." />
     </div>
   );
 }
 
-function ListPanel({ title, items, renderItem }) {
+function ListPanel({ title, items, empty }) {
   return (
     <article className="panel">
       <h3>{title}</h3>
-      {items.map((item) => (
-        <div className="demand-row" key={typeof item === "string" ? item : JSON.stringify(item)}>
-          {renderItem ? renderItem(item) : <span>{item}</span>}
-        </div>
-      ))}
+      {items.length === 0 ? <p className="empty-state">{empty}</p> : items.map((item) => <div className="demand-row" key={JSON.stringify(item)}>{String(item)}</div>)}
     </article>
   );
 }
@@ -459,12 +441,6 @@ function Metric({ label, value }) {
 
 function formatMetricLabel(key) {
   return key.replace(/([A-Z])/g, " $1").replace(/^./, (char) => char.toUpperCase());
-}
-
-function roleName(role) {
-  if (role === "admin") return "Admin";
-  if (role === "seller") return "Seller";
-  return "Normal User";
 }
 
 export default App;

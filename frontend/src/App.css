@@ -39,6 +39,9 @@ button {
 }
 
 .brand {
+  background: transparent;
+  border: 0;
+  color: #fff;
   cursor: pointer;
   font-size: 32px;
   font-weight: 800;
@@ -48,14 +51,6 @@ button {
 
 .brand span {
   font-size: 18px;
-}
-
-.brand small {
-  color: #ff9900;
-  display: block;
-  font-size: 12px;
-  letter-spacing: 1.6px;
-  text-transform: uppercase;
 }
 
 .location {
@@ -120,8 +115,8 @@ main {
 .hero {
   align-items: center;
   background:
-    linear-gradient(90deg, rgba(255, 225, 153, 0.95), rgba(255, 192, 203, 0.88)),
-    radial-gradient(circle at 80% 40%, rgba(255, 153, 0, 0.24), transparent 32%);
+    linear-gradient(90deg, rgba(252, 225, 171, 0.95), rgba(240, 244, 248, 0.96)),
+    radial-gradient(circle at 82% 38%, rgba(255, 153, 0, 0.18), transparent 30%);
   display: grid;
   gap: 24px;
   grid-template-columns: 1fr auto;
@@ -200,7 +195,7 @@ main {
 }
 
 .deal-card {
-  min-height: 250px;
+  min-height: 170px;
   padding: 22px;
 }
 
@@ -217,32 +212,6 @@ main {
   color: #4b5563;
   line-height: 1.5;
   margin: 0 0 18px;
-}
-
-.product-grid {
-  display: grid;
-  gap: 14px;
-  grid-template-columns: repeat(2, 1fr);
-}
-
-.product-tile {
-  display: grid;
-  gap: 6px;
-}
-
-.mock-image {
-  align-items: center;
-  background: linear-gradient(135deg, #f3f4f6, #d1fae5);
-  display: flex;
-  font-size: 28px;
-  font-weight: 900;
-  height: 92px;
-  justify-content: center;
-}
-
-.product-tile span {
-  color: #007185;
-  font-size: 13px;
 }
 
 .form-shell {
@@ -295,7 +264,7 @@ main {
 .metric-grid {
   display: grid;
   gap: 16px;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
   margin-bottom: 18px;
 }
 
@@ -316,7 +285,7 @@ main {
 .dashboard-grid {
   display: grid;
   gap: 18px;
-  grid-template-columns: 1.2fr 1fr 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
 }
 
 .panel {
@@ -337,6 +306,34 @@ main {
 .demand-row small,
 .nudge {
   color: #4b5563;
+}
+
+.mode-switch {
+  background: #f3f4f6;
+  border-radius: 999px;
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+}
+
+.mode-switch button {
+  background: transparent;
+  border-radius: 999px;
+  color: #374151;
+  font-weight: 700;
+  padding: 9px 16px;
+}
+
+.mode-switch button.active {
+  background: #131921;
+  color: #fff;
+}
+
+.empty-state {
+  border-top: 1px solid #e5e7eb;
+  color: #6b7280;
+  margin: 0;
+  padding: 18px 0 0;
 }
 
 .nudge {
